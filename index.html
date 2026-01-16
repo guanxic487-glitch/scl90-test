@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>SCL-90 心理健康深度评估系统</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        /* === 1. 全局样式变量 === */
+        :root {
+            --primary: #4f46e5;       /* 主色 */
+            --primary-light: #e0e7ff; 
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+            --bg-grad: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+
+        html { font-size: 16px; }
+        @media (max-width: 600px) { html { font-size: 14px; } }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-grad);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px 10px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        /* 主容器 */
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            margin-top: 1vh;
+            padding-bottom: 2rem;
+            position: relative; /* 关键：为了覆盖登录层 */
+        }
+
+        /* === 新增：兑换码登录层样式 === */
+        #login-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(240, 242, 245, 0.98); /* 不透明背景挡住后面 */
+            z-index: 9999; /* 保证在最上层 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .login-card {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 1rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        .login-input {
+            width: 100%;
+            padding: 12px;
+            margin: 20px 0;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            outline: none;
+            text-align: center;
+            letter-spacing: 2px;
+            transition: border 0.3s;
+            box-sizing: border-box; /* 防止padding撑大 */
+        }
+        .login-input:focus { border-color: var(--primary); }
+        .error-msg { color: var(--danger); font-size: 0.9rem; height: 20px; margin-bottom: 5px; }
+
+        /* === 进度条 === */
+        .progress-box {
+            position: sticky;
+            top: 0;
+            background: rgba(255,255,255,0.98);
+            z-index: 50;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .progress-track {
+            flex: 1;
+            height: 0.6rem;
+            background: #f1f5f9;
+            border-radius: 1rem;
+            margin: 0 1rem;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 1rem;
+        }
+
+        /* === 通用及按钮 === */
+        .content-area { padding: 2rem; animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        h1 { font-size: 1.8rem; margin: 0 0 1rem 0; color: var(--primary); text-align: center; }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 1rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 0.8rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 1rem;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+        }
+        .btn:hover { background: #4338ca; transform: translateY(-2px); }
+        .btn:active { transform: scale(0.98); }
+
+        /* === 题目与选项 === */
+        .question-card {
+            background: #fff;
+            padding: 1.5rem;
+            border-radius: 0.8rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid #f1f5f9;
+        }
+        .q-text { font-size: 1.2rem; font-weight: 600; margin-bottom: 1.5rem; color: #1e293b; }
+        .options-group { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+        .option-item { flex: 1; min-width: 70px; cursor: pointer; position: relative; }
+        .option-item input { position: absolute; opacity: 0; }
+        .option-box {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 0.8rem 0.2rem; background: #fff; border: 2px solid #e2e8f0; border-radius: 0.6rem; transition: all 0.2s;
+        }
+        .option-val { font-size: 1.2rem; font-weight: bold; margin-bottom: 2px; }
+        .option-label { font-size: 0.75rem; color: #94a3b8; }
+        .option-item input:checked + .option-box {
+            border-color: var(--primary); background: var(--primary-light); color: var(--primary);
+        }
+
+        /* === 结果页 === */
+        .chart-container { position: relative; width: 100%; height: 0; padding-bottom: 75%; margin: 0 auto 2rem auto; }
+        .chart-container canvas { position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
+        .result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+        .factor-card { background: #fff; border-radius: 0.8rem; padding: 1.5rem; border: 1px solid #e2e8f0; position: relative; overflow: hidden; }
+        .factor-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: #cbd5e1; }
+        .factor-card.status-normal::before { background: var(--success); }
+        .factor-card.status-mild::before { background: var(--warning); }
+        .factor-card.status-heavy::before { background: var(--danger); }
+        .f-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.8rem; }
+        .f-name { font-size: 1.1rem; font-weight: bold; }
+        .f-score { font-size: 1.5rem; font-family: monospace; font-weight: 700; }
+        .f-desc { font-size: 0.9rem; color: #64748b; background: #f8fafc; padding: 10px; border-radius: 6px; margin-top: 10px; }
+        
+        .hidden { display: none !important; }
+        .tag { padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="login-overlay">
+        <div class="login-card">
+            <div style="font-size: 3rem; margin-bottom: 10px;">🔐</div>
+            <h2 style="margin: 0; color: var(--text-main);">请输入测试兑换码</h2>
+            <p style="color: var(--text-sub); margin-top: 5px;">本测试为内部邀请制</p>
+            
+            <input type="text" id="code-input" class="login-input" placeholder="此处输入兑换码" maxlength="20">
+            <div id="login-msg" class="error-msg"></div>
+            
+            <button class="btn" onclick="verifyCode()">立即验证</button>
+        </div>
+    </div>
+
+<div class="container">
+    
+    <div id="welcome-screen" class="content-area hidden" style="text-align: center;">
+        <div style="font-size: 4rem; margin-bottom: 1rem;">🧠</div>
+        <h1>SCL-90 心理健康自测</h1>
+        <p style="font-size: 1.1rem;">专业版 · 90项指标 · 智能深度解读</p>
+        
+        <div style="text-align: left; background: #fff; padding: 20px; border-radius: 12px; margin: 30px 0; border: 1px solid #e2e8f0;">
+            <h3 style="margin-top:0; color:var(--text-main);">📝 测前须知</h3>
+            <ul style="padding-left: 20px; color: var(--text-sub); margin-bottom: 0;">
+                <li>请根据您<strong>最近一周</strong>（包括今天）的实际感受进行评分。</li>
+                <li>评分标准：1分(从无) → 5分(严重)。</li>
+                <li>本测试结果仅供自我参考，严禁用于临床诊断。</li>
+            </ul>
+        </div>
+        
+        <button class="btn" onclick="startTest()">开始测试</button>
+    </div>
+
+    <div id="quiz-screen" class="hidden">
+        <div class="progress-box">
+            <span style="font-weight:bold; color:var(--primary)" id="progress-text">1 / 90</span>
+            <div class="progress-track">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+        </div>
+        <div class="content-area" id="questions-container"></div>
+        <div style="padding: 0 2rem 2rem 2rem;">
+            <button class="btn" onclick="calculateResult()">提交并查看详细报告</button>
+        </div>
+    </div>
+
+    <div id="result-screen" class="content-area hidden">
+        <h1>📊 您的心理健康画像</h1>
+        <p style="text-align: center; font-size: 0.9rem;">生成时间：<span id="report-date"></span></p>
+        <div class="chart-container">
+            <canvas id="radarChart"></canvas>
+        </div>
+        <h2>因子深度解读</h2>
+        <div id="result-grid" class="result-grid"></div>
+        <div style="margin-top: 3rem; padding: 15px; background: #fff1f2; border: 1px solid #fda4af; border-radius: 8px; color: #be123c; font-size: 0.9rem;">
+            <strong>⚠️ 特别提醒：</strong>
+            <p style="margin: 5px 0 0 0;">
+                心理测试结果受环境、情绪等多种因素影响。如得分较高且痛苦，请前往正规医院就诊。
+            </p>
+        </div>
+        <button class="btn" style="background: #94a3b8; margin-top: 30px;" onclick="location.reload()">重新测试</button>
+    </div>
+
+</div>
+
+<script>
+    // ==========================================
+    //    ⚠️ 1. 管理员设置区 (兑换码在这里修改)
+    // ==========================================
+    
+    // 请在下方引号内填入你想要的兑换码，用逗号隔开
+    const validCodes = ["VIP888", "SCL2024", "TEST001"]; 
+
+    // ==========================================
+    //    2. 验证逻辑区
+    // ==========================================
+
+    // 页面加载时检查：如果已经输对过，直接放行
+    window.onload = function() {
+        const isVerified = localStorage.getItem('scl90_code_verified');
+        if (isVerified === 'yes') {
+            document.getElementById('login-overlay').classList.add('hidden');
+            document.getElementById('welcome-screen').classList.remove('hidden');
+        }
+    };
+
+    // 验证按钮点击触发
+    function verifyCode() {
+        const input = document.getElementById('code-input').value.trim(); // 获取输入并去空格
+        const msg = document.getElementById('login-msg');
+
+        // 检查输入是否在 validCodes 数组里
+        if (validCodes.includes(input)) {
+            // 验证成功
+            localStorage.setItem('scl90_code_verified', 'yes'); // 记录状态
+            document.getElementById('login-overlay').style.display = 'none'; // 隐藏登录层
+            document.getElementById('welcome-screen').classList.remove('hidden'); // 显示欢迎页
+        } else {
+            // 验证失败
+            msg.innerText = "❌ 兑换码无效，请检查输入";
+            document.getElementById('code-input').value = ''; // 清空输入框
+            document.getElementById('code-input').focus();
+        }
+    }
+
+    // ==========================================
+    //    3. 核心数据与逻辑 (无需修改)
+    // ==========================================
+    const factors = {
+        "躯体化": [1, 4, 12, 27, 40, 42, 48, 49, 52, 53, 56, 58],
+        "强迫症状": [3, 9, 10, 28, 38, 45, 46, 51, 55, 65],
+        "人际关系敏感": [6, 21, 34, 36, 37, 41, 61, 69, 73],
+        "抑郁": [5, 14, 15, 20, 22, 26, 29, 30, 31, 32, 54, 71, 79],
+        "焦虑": [2, 17, 23, 33, 39, 57, 72, 78, 80, 86],
+        "敌对": [11, 24, 63, 67, 74, 81],
+        "恐怖": [13, 25, 47, 50, 70, 75, 82],
+        "偏执": [8, 18, 43, 68, 76, 83],
+        "精神病性": [7, 16, 35, 62, 77, 84, 85, 87, 88, 90],
+        "其他": [19, 44, 59, 60, 64, 66, 89] 
+    };
+
+    const questionTextList = [
+        "头痛", "神经过敏，心中不踏实", "头脑中有不必要的想法或字句盘旋", "头晕或昏倒", "对异性的兴趣减退", 
+        "对旁人责备求全", "感到别人能控制您的思想", "责怪别人制造麻烦", "忘性大", "担心自己的衣饰整齐及仪态的端庄", 
+        "容易烦恼和激动", "胸痛", "害怕空旷的场所或街道", "感到自己的精力下降，活动减慢", "想结束自己的生命", 
+        "听到旁人听不到的声音", "身体颤抖", "感到绝大多数人都不可信任", "胃口不好", "容易哭泣", 
+        "同异性相处时感到害羞不自在", "感到受骗，中了圈套或有人想抓住您", "无缘无故地突然感到害怕", "自己发脾气，难以控制", "怕单独出门", 
+        "经常责怪自己", "腰痛", "感到难以完成任务", "感到孤独", "感到苦闷", 
+        "过分担忧", "对事物不感兴趣", "感到害怕", "您的感情容易受到伤害", "旁人能知道您的私下想法", 
+        "感到别人不理解您、不同情您", "感到人们对您不友好，不喜欢您", "做事必须做得很慢以保证做得正确", "心跳得很厉害", "恶心或胃部不舒服", 
+        "感到比不上别人", "肌肉酸痛", "感到有人在监视您、谈论您", "难以入睡", "做事必须反复检查", 
+        "难以作出决定", "怕乘电车、公共汽车、地铁或火车", "呼吸有困难", "一阵阵发冷或发热", "因为感到害怕而避开某些东西、场合或活动", 
+        "脑子变空了", "身体发麻或刺痛", "喉咙有梗塞感", "感到没有前途没有希望", "不能集中注意力", 
+        "身体某一部分软弱无力", "感到紧张或容易紧张", "感到手或脚发重", "想到死亡的事", "吃得太多", 
+        "当别人看着您或谈论您时感到不自在", "有一些不属于您自己的想法", "有想打人或伤害他人的冲动", "醒得太早", "必须反复洗手、点数目或触摸某些东西", 
+        "睡得不稳，不深", "有想摔坏或破坏东西的冲动", "有一些别人没有的想法", "感到对别人神经过敏", "在商店或电影院等人多的地方感到不自在", 
+        "感到任何事情都很困难", "感到心神不宁", "感到在公共场合吃东西很不舒服", "经常与人争论", "单独一人时神经很紧张", 
+        "别人对您的成绩没有作出恰当的评价", "即使和别人在一起也感到孤单", "感到坐立不安，心烦意乱", "感到自己没有什么价值", "感到熟悉的东西变成陌生或不像是真的", 
+        "大叫或摔东西", "害怕会在公共场合晕倒", "感到别人想占您的便宜", "为一些有关性的念头而很苦恼", "您认为应该因为自己的过错而受到惩罚", 
+        "感到要赶快把事情做完", "感到自己的身体有严重问题", "从未感到和其他人很亲近", "感到有罪恶感", "感到自己的脑子有毛病"
+    ];
+
+    const interpretations = {
+        "躯体化": { desc: "反映身体不适感，如头痛、肌肉酸痛等。", advice: ["身体感觉良好。", "轻微不适，注意休息。", "身体不适感明显，建议体检。", "症状严重影响生活，请立即就医。"] },
+        "强迫症状": { desc: "明知没必要但无法控制的重复行为或思维。", advice: ["思维清晰。", "偶尔有重复念头，属正常。", "强迫症状较明显，干扰效率。", "强迫症状严重，请寻求专业咨询。"] },
+        "人际关系敏感": { desc: "人际交往中的不自在感和自卑感。", advice: ["社交自信。", "偶尔害羞。", "人际交往敏感，易感被误解。", "极度自卑，害怕社交，建议咨询。"] },
+        "抑郁": { desc: "苦闷的情感体验，生活兴趣减退。", advice: ["情绪积极稳定。", "轻微情绪低落，多运动倾诉。", "明显低落和动力不足，警惕抑郁。", "抑郁症状严重，请立即寻求医生帮助。"] },
+        "焦虑": { desc: "游离不定的焦虑及惊恐发作。", advice: ["心态平和。", "轻微紧张，可能与近期压力有关。", "经常坐立不安，焦虑影响生活。", "焦虑程度很高，请务必重视。"] },
+        "敌对": { desc: "摔物、争斗和不可控制的脾气。", advice: ["待人友善。", "偶尔烦躁。", "易冲动争论，需管理情绪。", "无法控制怒火，有攻击冲动，需干预。"] },
+        "恐怖": { desc: "对特定场所或事物的非理性恐惧。", advice: ["无明显恐惧。", "对特定事物轻微害怕。", "恐惧超出正常范围，试图回避。", "严重恐惧症状，限制活动范围。"] },
+        "偏执": { desc: "猜疑和关系妄想等。", advice: ["信任他人。", "偶尔觉得被针对。", "多疑，难以信任他人。", "猜疑心理严重，认为周围充满敌意。"] },
+        "精神病性": { desc: "幻听、思维播散等症状。", advice: ["无相关症状。", "疲劳下有轻微脱离现实感。", "思维模式异于常人，建议关注。", "得分高，可能存在精神症状，请就医。"] },
+        "其他": { desc: "睡眠和饮食情况。", advice: ["睡眠饮食正常。", "轻微睡眠/饮食困扰。", "问题明显，影响生活。", "严重睡眠饮食障碍，需调整。"] }
+    };
+
+    let userScores = new Array(90).fill(0);
+
+    function startTest() {
+        document.getElementById('welcome-screen').classList.add('hidden');
+        document.getElementById('quiz-screen').classList.remove('hidden');
+        renderQuestions();
+        window.scrollTo(0,0);
+    }
+
+    function renderQuestions() {
+        const container = document.getElementById('questions-container');
+        let html = '';
+        const opts = [{v:1,t:"从无"},{v:2,t:"轻度"},{v:3,t:"中度"},{v:4,t:"偏重"},{v:5,t:"严重"}];
+
+        questionTextList.forEach((text, i) => {
+            html += `
+                <div class="question-card" id="q-${i}">
+                    <div class="q-text">${i+1}. ${text}</div>
+                    <div class="options-group">
+                        ${opts.map(o => `
+                            <label class="option-item">
+                                <input type="radio" name="q${i}" value="${o.v}" onchange="handleAns(${i}, ${o.v})">
+                                <div class="option-box">
+                                    <span class="option-val">${o.v}</span>
+                                    <span class="option-label">${o.t}</span>
+                                </div>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    function handleAns(index, val) {
+        userScores[index] = val;
+        const count = userScores.filter(s => s > 0).length;
+        const pct = (count / 90) * 100;
+        document.getElementById('progress-text').innerText = `${count} / 90`;
+        document.getElementById('progress-fill').style.width = `${pct}%`;
+        setTimeout(() => {
+            const next = document.getElementById(`q-${index+1}`);
+            if(next) next.scrollIntoView({behavior:'smooth', block:'center'});
+        }, 250);
+    }
+
+    function calculateResult() {
+        if(userScores.includes(0)) {
+            alert("⚠️ 还有题目未完成，请检查进度！");
+            const idx = userScores.findIndex(s => s === 0);
+            document.getElementById(`q-${idx}`).scrollIntoView({behavior:'smooth', block:'center'});
+            return;
+        }
+
+        const scores = {};
+        const labels = [];
+        const data = [];
+        for(let key in factors) {
+            let sum = 0;
+            factors[key].forEach(i => sum += userScores[i-1]);
+            let avg = (sum / factors[key].length).toFixed(2);
+            scores[key] = parseFloat(avg);
+            labels.push(key);
+            data.push(avg);
+        }
+        showReport(labels, data, scores);
+    }
+
+    function showReport(labels, data, scores) {
+        document.getElementById('quiz-screen').classList.add('hidden');
+        document.getElementById('result-screen').classList.remove('hidden');
+        document.getElementById('report-date').innerText = new Date().toLocaleDateString();
+        window.scrollTo(0,0);
+
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '因子分',
+                    data: data,
+                    backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                    borderColor: '#4f46e5',
+                    pointBackgroundColor: '#4f46e5',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        suggestedMin: 1, 
+                        suggestedMax: 5,
+                        pointLabels: { font: { size: 12 } }
+                    }
+                }
+            }
+        });
+
+        const grid = document.getElementById('result-grid');
+        let html = '';
+        for(let key in scores) {
+            const s = scores[key];
+            let status = 'normal';
+            let statusText = '正常';
+            let color = 'var(--success)';
+            let adviceIdx = 0;
+
+            if(s >= 3) { status='heavy'; statusText='中重度'; color='var(--danger)'; adviceIdx=s>=4?3:2; }
+            else if(s >= 2) { status='mild'; statusText='轻度'; color='var(--warning)'; adviceIdx=1; }
+
+            const info = interpretations[key];
+            const advice = info.advice[adviceIdx];
+
+            html += `
+                <div class="factor-card status-${status}">
+                    <div class="f-header">
+                        <span class="f-name">${key}</span>
+                        <span class="f-score" style="color:${color}">${s}</span>
+                    </div>
+                    <div style="font-size:0.8rem; color:#64748b;">
+                        状态：<span class="tag" style="background:${color}20; color:${color}">${statusText}</span>
+                    </div>
+                    <div class="f-desc">
+                        <strong>${info.desc}</strong><br>
+                        <div style="margin-top:5px; border-top:1px dashed #cbd5e1; padding-top:5px; color:#334155;">
+                            ${advice}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        grid.innerHTML = html;
+    }
+</script>
+
+</body>
+</html>
